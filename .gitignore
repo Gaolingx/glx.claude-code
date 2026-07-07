@@ -1,3 +1,4 @@
 node_modules/
 *.tgz
 .codebuddy
+.DS_Store
