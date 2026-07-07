@@ -1,0 +1,64 @@
+.npc: &npc
+  - services:
+      - docker
+    stages:
+      - name: run Claude Code
+        image: ${CNB_DOCKER_REGISTRY}/${CNB_NPC_SLUG_LOWERCASE}:latest
+        timeout: 30m
+        env:
+          ai_model: glm-5.0-turbo
+          base_url_path: /ai-ide/v2
+          ACC_PRODUCT_CONFIG_V2: "true"
+          CNB_REPLACE_SYSTEM_PROMPT: 1
+          CNB_DEBUG_SYSTEM_PROMPT: 1
+          CNB_CUSTOM_SYSTEM_PROMPT: "You are a helpful coding assistant."
+          MAX_TURNS: 200
+
+Claude:
+  issue.comment@npc: *npc
+  pull_request.comment@npc: *npc
+
+$:
+  vscode:
+    - docker:
+        image: docker.cnb.cool/looc/default-dev-env:latest
+      services:
+        - vscode
+        - docker
+  tag_push:
+    - services:
+        - docker
+      docker:
+        volumes:
+          - /data/codewiki/${CNB_REPO_SLUG}:data
+      stages:
+        - name: generate codewiki
+          timeout: 10h
+          image: cnbcool/codewiki:latest
+          settings:
+            use_codebuddy: 0
+            git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}
+        - name: 获取 codewiki
+          image: docker.cnb.cool/looc/git-cnb
+          script: |
+            mv /data/codewiki/${CNB_REPO_SLUG}/* .
+            find /workspace -name "*.md"
+            git-cnb knowledges clean
+        - name: build knowledge base
+          image: cnbcool/knowledge-base
+          settings:
+            embedding_model: hunyuan
+            include: "**/**.md"
+            exclude: ""
+
+main:
+  push:
+    - services:
+        - name: docker
+          options:
+            rootlessBuildkitd:
+              enabled: true
+      stages:
+        - name: docker build & push
+          script: |
+            docker buildx build --platform linux/amd64,linux/arm64 -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest --push .
